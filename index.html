@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wetland Watch  — Western Province, Sri Lanka</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="topbar">
+  <button class="icon-btn" onclick="toggleSidebar()" title="Toggle layers">&#9776;</button>
+
+  <div class="search-wrap">
+    <div class="search-box">
+      <span style="color:var(--g1); font-size:15px; opacity:0.85;">&#128269;</span>
+      <input type="text" id="searchInput" placeholder="Search towns or landmarks…">
+    </div>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <button class="icon-btn" onclick="locateMe()" title="My location">&#128205;</button>
+
+  <button class="icon-btn" id="reportsBtn" onclick="openReportsPanel()" title="View all reports" style="position:relative">
+    &#128203;
+    <span id="reports-count-badge" class="badge-counter">0</span>
+  </button>
+</div>
+
+<div class="sidebar" id="sidebar">
+
+  <div class="sb-head">
+    <div class="sb-brand">
+      <div class="sb-icon">&#127807;</div>
+      <div>
+        <h1>Wetland Watch</h1>
+        <p>Western Province, Sri Lanka</p>
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-pill">
+        <div class="sv" id="total-count">—</div>
+        <div class="sl">Wetland<br>Polygons</div>
+      </div>
+      <div class="stat-pill">
+        <div class="sv" style="color:var(--rose)" id="reports-count-badge-sb">0</div>
+        <div class="sl">Reports<br>Submitted</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sb-body">
+
+    <div class="sec-label">Basemap</div>
+    <div class="bm-row">
+      <button class="bm-btn active" id="bm-street" onclick="setBasemap('street')">Street</button>
+      <button class="bm-btn" id="bm-sat" onclick="setBasemap('sat')">Satellite</button>
+      <button class="bm-btn" id="bm-topo" onclick="setBasemap('topo')">Terrain</button>
+    </div>
+
+    <div class="sec-label">Map Layers</div>
+
+    <label class="layer-row">
+      <input type="checkbox" id="lyr-boundary" checked onchange="toggleLayer('boundary',this.checked)">
+      <div class="cb on" id="cb-boundary" style="background:rgba(59,130,246,0.25); border-color:transparent">&#10003;</div>
+      <div class="ldot" style="background:rgba(59,130,246,0.8)"></div>
+      <span class="lname">Province boundary</span>
+    </label>
+
+    <label class="layer-row">
+      <input type="checkbox" id="lyr-wetlands" checked onchange="toggleLayer('wetlands',this.checked)">
+      <div class="cb on" id="cb-wetlands" style="background:rgba(34,211,238,0.25); border-color:transparent">&#10003;</div>
+      <div class="ldot" style="background:#22d3ee"></div>
+      <span class="lname">Wetland polygons</span>
+      <span class="lcount" id="cnt-wetlands">—</span>
+    </label>
+
+    <label class="layer-row">
+      <input type="checkbox" id="lyr-reports" checked onchange="toggleLayer('reports',this.checked)">
+      <div class="cb on" id="cb-reports" style="background:rgba(251,191,36,0.25); border-color:transparent">&#10003;</div>
+      <div class="ldot" style="background:#fbbf24"></div>
+      <span class="lname">Submitted reports</span>
+      <span class="lcount" id="reports-count-layer">0</span>
+    </label>
+
+    <div class="sec-label">Wetland Sub-types</div>
+    <div id="wetland-legend"></div>
+
+    <div class="sec-label">Actions</div>
+    <button class="action-btn primary" onclick="openReportsPanel()">
+      &#128203; View all submitted reports
+    </button>
+    <button class="action-btn" onclick="exportCSV()">
+      &#128229; Export reports as CSV
+    </button>
+    <button class="action-btn" onclick="locateMe()">
+      &#128205; Show my location
+    </button>
+
+    <div class="sec-label">About</div>
+    <div class="info-note">
+      <b>How to report:</b><br>
+      Click <em>anywhere</em> within Western Province — on a wetland polygon or not — to open the report form. GN Division auto-fills. You must enter the area name manually.
+      <br><br>
+      Reports are saved locally and submitted to Google Forms. Submitted locations appear as coloured markers on the map.
+    </div>
+
+  </div>
+</div>
+
+<div class="loader" id="loader">
+  <div class="spin"></div>
+  <span>Loading boundary and wetland data…</span>
+</div>
+
+<div class="status-bar" id="statusBar">
+  <div class="pulsedot loading" id="statusDot"></div>
+  <span id="statusText">Initialising…</span>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="dr-head">
+    <button class="dr-close" onclick="closeDrawer()">&#10005;</button>
+    <div class="dr-eyebrow">
+      <span id="dr-emoji">&#127807;</span>&nbsp;
+      <span id="dr-eyebrow-txt">Encroachment Report</span>
+    </div>
+    <h2>File a Report</h2>
+    <p>GN Division auto-fills. Enter the wetland or area name and describe what you observed.</p>
+  </div>
+
+  <div class="loc-badge">
+    <div class="lbdot on-wetland" id="loc-dot"></div>
+    <div>
+      <b id="loc-label">—</b>
+      <span id="loc-sub">—</span>
+    </div>
+  </div>
+
+  <div class="dr-body">
+
+    <div class="field">
+      <label>Name of wetland / area <span style="color:#f87171">*</span></label>
+      <input type="text" id="fld-name" placeholder="e.g. Muthurajawela Marsh, local tank name…">
+      <div class="field-note">Enter the local or known name. OSM has no name for most polygons.</div>
+    </div>
+
+    <div class="field">
+      <label>GN Division <span style="color:#4ade80">auto-filled</span></label>
+      <input type="text" id="fld-gn" disabled placeholder="Auto-detected from map">
+    </div>
+
+    <div class="field">
+      <label>Coordinates (lat, lng)</label>
+      <input type="text" id="fld-coords" disabled placeholder="Auto-filled on click">
+    </div>
+
+    <div class="field">
+      <label>Type of encroachment <span style="color:#f87171">*</span></label>
+      <div class="type-grid">
+        <div class="type-card" data-val="Housing" onclick="selType(this)"><span class="ti">&#127968;</span>Housing</div>
+        <div class="type-card" data-val="Farming" onclick="selType(this)"><span class="ti">&#127807;</span>Farming</div>
+        <div class="type-card" data-val="Industrial Activity" onclick="selType(this)"><span class="ti">&#127981;</span>Industrial</div>
+        <div class="type-card" data-val="Illegal Waste Dumping" onclick="selType(this)"><span class="ti">&#128465;</span>Waste Dumping</div>
+        <div class="type-card wide" data-val="Other" onclick="selType(this)"><span class="ti">&#128204;</span>Other</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="field">
+      <label>Description</label>
+      <textarea id="fld-desc" placeholder="Describe what you observed — extent, severity, what has changed…"></textarea>
+    </div>
+
+    <div class="field">
+      <label>Date of observation <span style="color:#f87171">*</span></label>
+      <input type="date" id="fld-date">
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-cancel" onclick="closeDrawer()">Cancel</button>
+      <button class="btn btn-submit" onclick="submitReport()">Submit Report</button>
+    </div>
+
+  </div>
+</div>
+
+<div class="reports-panel" id="reportsPanel">
+  <div class="rp-head">
+    <button class="rp-close" onclick="closeReportsPanel()">&#10005;</button>
+    <div class="dr-eyebrow">&#128203;&nbsp;Community Reports</div>
+    <h2>All Submissions</h2>
+    <p>Click a card to fly to that location. Reports are stored in your browser.</p>
+  </div>
+
+  <div class="rp-filters">
+    <span class="filter-chip active" data-filter="all" onclick="setFilter('all')">All</span>
+    <span class="filter-chip" data-filter="Housing" onclick="setFilter('Housing')">&#127968; Housing</span>
+    <span class="filter-chip" data-filter="Farming" onclick="setFilter('Farming')">&#127807; Farming</span>
+    <span class="filter-chip" data-filter="Industrial Activity" onclick="setFilter('Industrial Activity')">&#127981; Industrial</span>
+    <span class="filter-chip" data-filter="Illegal Waste Dumping" onclick="setFilter('Illegal Waste Dumping')">&#128465; Waste</span>
+    <span class="filter-chip" data-filter="Other" onclick="setFilter('Other')">&#128204; Other</span>
+  </div>
+
+  <div class="rp-body empty" id="rp-body">
+    <div class="empty-icon">&#128235;</div>
+    <div>No reports yet</div>
+    <div style="font-size:12px; color:var(--dim2)">Click anywhere in Western Province to start.</div>
+  </div>
+
+  <div class="rp-stats">
+    <div class="rp-stat"><div class="rsv" id="rp-total">0</div><div class="rsl">Total</div></div>
+    <div class="rp-stat"><div class="rsv" style="color:var(--g2)" id="rp-wetland">0</div><div class="rsl">On wetland</div></div>
+    <div class="rp-stat"><div class="rsv" style="color:var(--amber)" id="rp-other">0</div><div class="rsl">Outside polygon</div></div>
+    <div class="rp-stat" style="cursor:pointer" onclick="exportCSV()"><div class="rsv" style="font-size:20px">&#128229;</div><div class="rsl">Export CSV</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Done</div>
+
+<iframe name="hf" style="display:none"></iframe>
+
+<script src="js/map.js"></script>
+<script src="js/form.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+  const _origRefresh = refreshReportStats;
+  window.refreshReportStats = function() {
+    _origRefresh();
+    const count = getAllReports().length;
+    document.getElementById('reports-count-badge').textContent = count;
+    document.getElementById('reports-count-badge-sb').textContent = count;
+    const cl = document.getElementById('reports-count-layer');
+    if (cl) cl.textContent = count;
+  };
+</script>
+
+</body>
+</html>
