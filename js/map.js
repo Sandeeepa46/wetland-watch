@@ -1,8 +1,8 @@
-/* ═══════════════════════════════════════════════════
+/*
    map.js — Enhanced Map Init, Custom Basemaps, Boundaries, & Wetlands
-═══════════════════════════════════════════════════ */
+*/
 
-// ── Wetland sub-type colour palette ──────────────
+// Wetland sub-type colour palette //
 const WETLAND_COLORS = {
   wetland:     '#22d3ee',
   marsh:       '#34d399',
@@ -22,48 +22,46 @@ function getWetlandColor(props) {
   return WETLAND_COLORS[sub] || WETLAND_COLORS.default;
 }
 
-// ── Map ───────────────────────────────────────────
+// Map //
 const map = L.map('map', { 
   zoomControl: false,
-  fadeAnimation: true // Smooth transitions between premium styles
+  fadeAnimation: true // Smooth transitions between premium styles //
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-// Create a dedicated overlay pane so our boundaries and shapes 
-// always sit cleanly above any basemap labels or satellite pixels.
+// Create a dedicated overlay pane so our boundaries and shapes //
+// always sit cleanly above any basemap labels or satellite pixels. //
 map.createPane('overlayPane').style.zIndex = 400;
 
-// ── Visually Interactive Basemaps ─────────────────
+// ── Visually Interactive Basemaps (Fixed: No API Keys Required) ── //
 const BASEMAPS = {
-  // Option 1: Stadia Alidade Smooth Dark — Ultra-clean, premium charcoal layout 
-  // (No registration required for local/academic development development)
-  street: L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+  // Option 1: CartoDB Dark Matter — High-performance sleek charcoal layout //
+  street: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 20,
-    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org/copyright">OpenStreetMap</a>'
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
   }),
   
-  // Option 2: Esri World Imagery (Satellite) with adjusted maxZoom for crisp zoom depths
+  // Option 2: Esri World Imagery (Satellite) with adjusted maxZoom for crisp zoom depths // 
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { 
     attribution: '&copy; Esri &mdash; DigitalGlobe, GeoEye, Earthstar Geographics', 
     maxZoom: 19 
   }),
   
-  // Option 3: Esri Gray Canvas (Light) — Premium muted architectural layout
-  // Completely eliminates traditional chaotic topographic lines for crisp dashboard reporting
-  topo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '&copy; Esri, HERE, Garmin, NGA, USGS',
-    maxZoom: 16
+  // Option 3: CartoDB Positron — Premium light/minimal architectural layout //
+  topo: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 20
   })
 };
 
-// Default to Smooth Dark view
+// Default to Dark Matter view //
 BASEMAPS.street.addTo(map);
 
 function setBasemap(key) {
   Object.values(BASEMAPS).forEach(l => map.hasLayer(l) && map.removeLayer(l));
   BASEMAPS[key].addTo(map);
   
-  // Dynamically optimize polygon styling depending on dark vs satellite vs light backgrounds
+  // Dynamically optimize polygon styling depending on dark vs satellite vs light backgrounds // 
   updateDynamicLayerStyles(key);
 
   ['street', 'sat', 'topo'].forEach(id => {
@@ -74,26 +72,26 @@ function setBasemap(key) {
   if(activeEl) activeEl.classList.add('active');
 }
 
-// Automatically tweaks vector aesthetics based on active basemap choice
+// Automatically tweaks vector aesthetics based on active basemap choice // 
 function updateDynamicLayerStyles(activeBasemap) {
   if (!wetlandLayer || !boundaryLayer) return;
 
   if (activeBasemap === 'sat') {
-    // Satellite needs slightly deeper strokes and vibrant fills to stay legible over trees/houses
+    // Satellite needs slightly deeper strokes and vibrant fills to stay legible over trees/houses // 
     wetlandLayer.setStyle(f => ({ color: getWetlandColor(f.properties), weight: 3, fillOpacity: 0.55 }));
     boundaryLayer.setStyle({ color: 'rgba(255,255,255,0.9)', weight: 2, fillOpacity: 0.02 });
   } else if (activeBasemap === 'topo') {
-    // Light Canvas map benefits from delicate outline colors and softer fills
+    // Light Canvas map benefits from delicate outline colors and softer fills // 
     wetlandLayer.setStyle(f => ({ color: getWetlandColor(f.properties), weight: 1.5, fillOpacity: 0.45 }));
     boundaryLayer.setStyle({ color: 'rgba(14,165,233,0.4)', weight: 1.5, fillOpacity: 0.03 });
   } else {
-    // Reset back to premium Dark Mode specs
+    // Reset back to premium Dark Mode specs // 
     wetlandLayer.setStyle(f => ({ color: getWetlandColor(f.properties), weight: 2, fillOpacity: 0.65 }));
     boundaryLayer.setStyle({ color: 'rgba(147,197,253,0.6)', weight: 1.5, fillOpacity: 0.04 });
   }
 }
 
-// ── Layer registry ────────────────────────────────
+//  Layer registry //
 const LAYERS = {
   boundary: null,
   wetlands: null,
@@ -113,7 +111,7 @@ function toggleLayer(key, on) {
   }
 }
 
-// ── Load boundary ─────────────────────────────────
+//  Load boundary //
 let boundaryLayer = null;
 let outerBoundaryLayer = null;
 
@@ -157,7 +155,7 @@ async function loadBoundary() {
   return bData;
 }
 
-// ── Load wetlands from GeoJSON file ──────────────
+//  Load wetlands from GeoJSON file //
 let wetlandLayer = null;
 let selectedWetlandLayer = null;
 let selectedWetlandRestore = null;
@@ -229,7 +227,7 @@ function buildWetlandLegend(counts) {
   });
 }
 
-// ── Point-In-Polygon Check ───────────────────────
+//  Point-In-Polygon Check //
 function pointInRing(pt, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -240,7 +238,7 @@ function pointInRing(pt, ring) {
   return inside;
 }
 
-// ── GN Division / Boundary Verification ─────
+//  GN Division / Boundary Verification //
 function findGNDivision(latlng) {
   if (!boundaryLayer) return '';
   let found = '';
@@ -266,14 +264,14 @@ function findGNDivision(latlng) {
   return found;
 }
 
-// ── Wetland polygon click ─────────────────────────
+//  Wetland polygon click //
 function onWetlandClick(feature, layer, latlng, color) {
   if (selectedWetlandLayer && selectedWetlandRestore)
     selectedWetlandLayer.setStyle(selectedWetlandRestore);
 
   selectedWetlandLayer = layer;
   
-  // Cache the base properties for selection recovery
+  // Cache the base properties for selection recovery //
   const activeBM = map.hasLayer(BASEMAPS.sat) ? 'sat' : (map.hasLayer(BASEMAPS.topo) ? 'topo' : 'street');
   let fallbackOpacity = 0.65, fallbackWeight = 2.0;
   if(activeBM === 'sat') { fallbackOpacity = 0.55; fallbackWeight = 3.0; }
@@ -295,7 +293,8 @@ function onWetlandClick(feature, layer, latlng, color) {
   });
 }
 
-// ── Map click ─────────────────────────────────────
+//  Map click //
+
 map.on('click', e => {
   const gn = findGNDivision(e.latlng);
   
@@ -318,7 +317,7 @@ map.on('click', e => {
   });
 });
 
-// ── Geolocation & Automatic Form Activation ──────
+//  Geolocation & Automatic Form Activation  //
 function locateMe() {
   if (!navigator.geolocation) {
     showToast("⚠️ Geolocation is not supported by your browser");
