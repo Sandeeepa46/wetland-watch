@@ -1,4 +1,4 @@
-/* reports.js — Fully Synchronized Live Google Sheet Database Core Engine
+/* reports.js — Robust Dynamic Header Mapping System
 */
 
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMWIbtU1mZTUQI6OBVIPl_eAplNdDGbCCEUl1vYzV_6Ef-Ne325oh9e0CE20wKGWxHbEeA6uv7_NUa/pub?gid=773411622&single=true&output=csv";
@@ -10,12 +10,11 @@ function getAllReports() {
   return liveReportsDatabase;
 }
 
-/**
- * Downloads, cleans, validates, and renders historical responses from Google Spreadsheet rows
- */
 async function restoreReportMarkers() {
-  if (!GOOGLE_SHEET_CSV_URL) {
-    console.warn("⚠️ Database URL is empty.");
+  if (!GOOGLE_SHEET_CSV_URL) return;
+
+  if (typeof reportMarkersLayer === 'undefined' || !reportMarkersLayer) {
+    setTimeout(restoreReportMarkers, 300);
     return;
   }
 
@@ -23,53 +22,55 @@ async function restoreReportMarkers() {
     const response = await fetch(GOOGLE_SHEET_CSV_URL);
     const csvData = await response.text();
     
-    // Safety check if the spreadsheet response is invalid
-    if (!csvData || csvData.trim().length === 0) {
-      console.error("❌ The Google Sheet returned an empty response.");
-      return;
-    }
+    if (!csvData || csvData.trim().length === 0) return;
 
-    if (typeof reportMarkersLayer !== 'undefined' && reportMarkersLayer) {
-      reportMarkersLayer.clearLayers();
-    }
+    reportMarkersLayer.clearLayers();
     liveReportsDatabase = [];
 
-    // Split text document lines safely
     const lines = csvData.split(/\r?\n/);
     if (lines.length <= 1) return; 
 
-    // Skip column headers row
+    // Extract headers to map them dynamically
+    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+    
+    // Find column positions automatically by searching your form's exact keywords
+    const idxTimestamp   = headers.findIndex(h => h.includes('time'));
+    const idxName        = headers.findIndex(h => h.includes('name') || h.includes('title') || h.includes('wetland'));
+    const idxGn          = headers.findIndex(h => h.includes('gn') || h.includes('division') || h.includes('grama'));
+    const idxCoords      = headers.findIndex(h => h.includes('coord') || h.includes('lat') || h.includes('location'));
+    const idxType        = headers.findIndex(h => h.includes('type') || h.includes('encroach'));
+    const idxDescription = headers.findIndex(h => h.includes('desc') || h.includes('detail'));
+    const idxDate        = headers.findIndex(h => h.includes('date'));
+
     const rows = lines.slice(1);
 
     rows.forEach((row, index) => {
       if (!row.trim()) return;
 
-      // Safe CSV Regex Parser splitting rows by commas while ignoring internal sentence commas inside quotation marks
+      // Safe split ignoring commas wrapped inside quotes
       const columns = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-      // Defend array bounds to ensure we don't map structural errors
-      if (columns.length < 4) return;
+      // Clean cell values
+      const getCell = (idx) => (idx !== -1 && columns[idx]) ? columns[idx].replace(/"/g, '').trim() : '';
 
-      // Map values and purge double-quote wrapper artifacts introduced by Google Spreadsheet exports
       const report = {
         id:          "sheet-" + (index + 1),
-        timestamp:   columns[0] ? columns[0].replace(/"/g, '').trim() : '',
-        name:        columns[1] ? columns[1].replace(/"/g, '').trim() : 'Unnamed area',
-        gnDivision:  columns[2] ? columns[2].replace(/"/g, '').trim() : 'Unknown GN',
-        coordsRaw:   columns[3] ? columns[3].replace(/"/g, '').trim() : '', 
-        type:        columns[4] ? columns[4].replace(/"/g, '').trim() : 'Other',
-        description: columns[5] ? columns[5].replace(/"/g, '').trim() : '',
-        date:        columns[6] ? columns[6].replace(/"/g, '').trim() : ''
+        timestamp:   getCell(idxTimestamp),
+        name:        getCell(idxName) || 'Unnamed Wetland Asset',
+        gnDivision:  getCell(idxGn) || 'Unknown GN',
+        coordsRaw:   getCell(idxCoords),
+        type:        getCell(idxType) || 'Other',
+        description: getCell(idxDescription),
+        date:        getCell(idxDate)
       };
 
-      // Extract float coordinates from combined latitude and longitude strings
+      // Safe coordinate extractor
       if (report.coordsRaw && report.coordsRaw.includes(',')) {
         const splitPair = report.coordsRaw.split(',');
         report.lat = parseFloat(splitPair[0]);
         report.lng = parseFloat(splitPair[1]);
       }
 
-      // Render onto map view only if values pass geographic data validation
       if (report.lat && report.lng && !isNaN(report.lat) && !isNaN(report.lng)) {
         const checkPoint = L.latLng(report.lat, report.lng);
         let pointIntersectsWetland = false;
@@ -97,13 +98,10 @@ async function restoreReportMarkers() {
     }
 
   } catch (error) {
-    console.error("❌ Critical database synchronization pipeline broke:", error);
+    console.error("Database initialization stopped:", error);
   }
 }
 
-/**
- * Handles newly entered reports instantly on-screen to prevent data loss on interface submissions
- */
 function saveReport(newReport) {
   newReport.id = "local-" + Date.now();
   
@@ -131,7 +129,6 @@ function saveReport(newReport) {
   }
 }
 
-// Sidebar Drawer Control Elements //
 function openReportsPanel() {
   document.getElementById('reportsPanel').classList.add('open');
   document.getElementById('drawer').classList.remove('open');
@@ -160,12 +157,7 @@ function renderReportCards() {
     reports = reports.filter(r => r.type === activeFilter);
   }
 
-  // Sort chronologically reverse: newest items listed first
-  reports = reports.sort((a, b) => {
-    const idA = parseInt(String(a.id).replace(/\D/g, '')) || 0;
-    const idB = parseInt(String(b.id).replace(/\D/g, '')) || 0;
-    return idB - idA;
-  });
+  reports = reports.sort((a, b) => b.id.localeCompare(a.id));
 
   if (reports.length === 0) {
     body.className = 'rp-body empty';
