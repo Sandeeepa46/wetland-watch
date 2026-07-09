@@ -1,8 +1,7 @@
-/* 
-   app.js — Search, locate, toast, status, bootstrap
- */
+/* app.js — Core Bootstrap UI & Initialization Pipeline
+*/
 
-// Toast //
+// Toast Notifications //
 function showToast(msg, isError = false) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -12,20 +11,20 @@ function showToast(msg, isError = false) {
   t._timer = setTimeout(() => t.classList.remove('show'), isError ? 4500 : 3800);
 }
 
-// Status bar //
+// Status Bar Monitor //
 function setStatus(msg, mode = 'ok') {
   document.getElementById('statusText').textContent = msg;
   const dot = document.getElementById('statusDot');
   dot.className = 'pulsedot' + (mode === 'warn' ? ' warn' : mode === 'loading' ? ' loading' : '');
 }
 
-// Sidebar toggle //
+// Navigation Sidebar Toggle Drawer //
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('hidden');
   setTimeout(() => map.invalidateSize(), 300);
 }
 
-// Locate me //
+// Geolocation GPS Hardware Tracker //
 let locMarker = null;
 function locateMe() {
   if (!navigator.geolocation) { showToast('Geolocation not supported by your browser', true); return; }
@@ -45,9 +44,9 @@ function locateMe() {
   );
 }
 
-// Nominatim search //
+// Nominatim Geocoding Search Box System //
 let searchTimer = null;
-let provinceBounds = null; // set after boundary loads
+let provinceBounds = null; 
 
 function initSearch(bounds) {
   provinceBounds = bounds;
@@ -89,30 +88,38 @@ async function doSearch(q) {
       });
     }
     box.classList.add('show');
-  } catch (e) { console.warn('Search error', e); }
+  } catch (e) { console.warn('Search service error', e); }
 }
 
-// Bootstrap //
+// Synchronous System Bootstrap On Window Load //
 window.addEventListener('load', async () => {
-  setStatus('Loading boundary…', 'loading');
+  setStatus('Loading province boundary…', 'loading');
 
   try {
-    const bData = await loadBoundary();
+    // 1. Ingest base provincial operational map limits
+    await loadBoundary();
+    
+    // 2. Load classified wetland asset polygons
     setStatus('Loading wetland polygons…', 'loading');
     const count = await loadWetlands();
+
+    // 3. Sync live database spreadsheet rows
+    setStatus('Synchronizing live community database…', 'loading');
+    await restoreReportMarkers();
+
+    // Remove application loading curtains from UI view
     document.getElementById('loader').style.display = 'none';
 
-    // Init search with province bounds //
-    initSearch(boundaryLayer.getBounds());
+    // Activate Nominatim text searching bounding parameters
+    if (typeof boundaryLayer !== 'undefined' && boundaryLayer) {
+      initSearch(boundaryLayer.getBounds());
+    }
 
-    // Restore any previously submitted report markers //
-    restoreReportMarkers();
-
-    setStatus(`${count} wetland polygons loaded — click anywhere in the province to report`);
+    setStatus(`${count} wetlands mapped — Click locations inside Western Province to file a live report.`);
   } catch (err) {
-    console.error(err);
+    console.error("Initialization sequence break:", err);
     document.getElementById('loader').style.display = 'none';
-    setStatus('Error loading data — check console', 'warn');
-    showToast('Failed to load map data', true);
+    setStatus('Error initializing active map parameters — see console logs', 'warn');
+    showToast('Failed to connect to backend data networks', true);
   }
 });
