@@ -1,4 +1,4 @@
-/* reports.js — Complete Unified Google Forms Synchronization Engine
+/* reports.js — Fully Synchronized Live Google Sheet Database Core Engine
 */
 
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMWIbtU1mZTUQI6OBVIPl_eAplNdDGbCCEUl1vYzV_6Ef-Ne325oh9e0CE20wKGWxHbEeA6uv7_NUa/pub?gid=773411622&single=true&output=csv";
@@ -11,11 +11,11 @@ function getAllReports() {
 }
 
 /**
- * Streams, validates, and plots historical database rows from the Google Sheet
+ * Downloads, cleans, validates, and renders historical responses from Google Spreadsheet rows
  */
 async function restoreReportMarkers() {
   if (!GOOGLE_SHEET_CSV_URL) {
-    console.warn("Google Sheet URL is unconfigured.");
+    console.warn("⚠️ Database URL is empty.");
     return;
   }
 
@@ -23,22 +23,34 @@ async function restoreReportMarkers() {
     const response = await fetch(GOOGLE_SHEET_CSV_URL);
     const csvData = await response.text();
     
+    // Safety check if the spreadsheet response is invalid
+    if (!csvData || csvData.trim().length === 0) {
+      console.error("❌ The Google Sheet returned an empty response.");
+      return;
+    }
+
     if (typeof reportMarkersLayer !== 'undefined' && reportMarkersLayer) {
       reportMarkersLayer.clearLayers();
     }
     liveReportsDatabase = [];
 
-    const lines = csvData.split('\n');
+    // Split text document lines safely
+    const lines = csvData.split(/\r?\n/);
     if (lines.length <= 1) return; 
 
+    // Skip column headers row
     const rows = lines.slice(1);
 
     rows.forEach((row, index) => {
       if (!row.trim()) return;
 
-      // Safe CSV regex parser
+      // Safe CSV Regex Parser splitting rows by commas while ignoring internal sentence commas inside quotation marks
       const columns = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
+      // Defend array bounds to ensure we don't map structural errors
+      if (columns.length < 4) return;
+
+      // Map values and purge double-quote wrapper artifacts introduced by Google Spreadsheet exports
       const report = {
         id:          "sheet-" + (index + 1),
         timestamp:   columns[0] ? columns[0].replace(/"/g, '').trim() : '',
@@ -50,20 +62,21 @@ async function restoreReportMarkers() {
         date:        columns[6] ? columns[6].replace(/"/g, '').trim() : ''
       };
 
+      // Extract float coordinates from combined latitude and longitude strings
       if (report.coordsRaw && report.coordsRaw.includes(',')) {
         const splitPair = report.coordsRaw.split(',');
         report.lat = parseFloat(splitPair[0]);
         report.lng = parseFloat(splitPair[1]);
       }
 
+      // Render onto map view only if values pass geographic data validation
       if (report.lat && report.lng && !isNaN(report.lat) && !isNaN(report.lng)) {
-        // Calculate point-in-polygon verification check
         const checkPoint = L.latLng(report.lat, report.lng);
         let pointIntersectsWetland = false;
 
         if (typeof wetlandLayer !== 'undefined' && wetlandLayer) {
           wetlandLayer.eachLayer(layer => {
-            if (layer.getBounds() && layer.getBounds().contains(checkPoint)) {
+            if (layer.getBounds && layer.getBounds().contains(checkPoint)) {
               pointIntersectsWetland = true;
             }
           });
@@ -84,16 +97,14 @@ async function restoreReportMarkers() {
     }
 
   } catch (error) {
-    console.error("Critical error fetching live crowdsourced responses:", error);
+    console.error("❌ Critical database synchronization pipeline broke:", error);
   }
 }
 
 /**
- * NEW FUNCTION: Captures a fresh submission locally, processes polygon math,
- * and forces a node point marker directly onto the map instantly.
+ * Handles newly entered reports instantly on-screen to prevent data loss on interface submissions
  */
 function saveReport(newReport) {
-  // Set a runtime dynamic id assignment 
   newReport.id = "local-" + Date.now();
   
   const checkPoint = L.latLng(newReport.lat, newReport.lng);
@@ -101,14 +112,13 @@ function saveReport(newReport) {
 
   if (typeof wetlandLayer !== 'undefined' && wetlandLayer) {
     wetlandLayer.eachLayer(layer => {
-      if (layer.getBounds() && layer.getBounds().contains(checkPoint)) {
+      if (layer.getBounds && layer.getBounds().contains(checkPoint)) {
         pointIntersectsWetland = true;
       }
     });
   }
   newReport.onWetland = pointIntersectsWetland;
 
-  // Insert instantly into user view layers
   liveReportsDatabase.push(newReport);
   
   if (typeof addReportMarker === 'function') {
@@ -121,7 +131,7 @@ function saveReport(newReport) {
   }
 }
 
-// Reports view panel UI configurations //
+// Sidebar Drawer Control Elements //
 function openReportsPanel() {
   document.getElementById('reportsPanel').classList.add('open');
   document.getElementById('drawer').classList.remove('open');
@@ -142,17 +152,24 @@ function setFilter(type) {
 
 function renderReportCards() {
   const body = document.getElementById('rp-body');
+  if (!body) return;
+  
   let reports = [...liveReportsDatabase];
 
   if (activeFilter !== 'all') {
     reports = reports.filter(r => r.type === activeFilter);
   }
 
-  reports = reports.sort((a, b) => b.id - a.id);
+  // Sort chronologically reverse: newest items listed first
+  reports = reports.sort((a, b) => {
+    const idA = parseInt(String(a.id).replace(/\D/g, '')) || 0;
+    const idB = parseInt(String(b.id).replace(/\D/g, '')) || 0;
+    return idB - idA;
+  });
 
   if (reports.length === 0) {
     body.className = 'rp-body empty';
-    body.innerHTML = '<div class="empty-icon">📭</div><div>No reports yet.</div>';
+    body.innerHTML = '<div class="empty-icon">📭</div><div>No matching reports found.</div>';
     return;
   }
 
