@@ -1,4 +1,4 @@
-/* app.js — Core Bootstrap UI & Form Interception Pipeline
+/* app.js — Base Platform Initialization & Safe Form Submission Interception
 */
 
 function showToast(msg, isError = false) {
@@ -25,8 +25,8 @@ function toggleSidebar() {
 
 let locMarker = null;
 function locateMe() {
-  if (!navigator.geolocation) { showToast('Geolocation not supported by your browser', true); return; }
-  setStatus('Finding your location…', 'loading');
+  if (!navigator.geolocation) { showToast('Geolocation feature not supported by your browser', true); return; }
+  setStatus('Tracking active hardware geolocation coordinates…', 'loading');
   navigator.geolocation.getCurrentPosition(
     pos => {
       const ll = [pos.coords.latitude, pos.coords.longitude];
@@ -38,11 +38,11 @@ function locateMe() {
       map.setView(ll, 16);
       setStatus('Showing your current location');
     },
-    () => setStatus('Could not get location — allow browser permission', 'warn')
+    () => setStatus('Could not read hardware location metrics', 'warn')
   );
 }
 
-// Nominatim Geocoding System //
+// Nominatim Global Spatial Search Systems //
 let searchTimer = null;
 let provinceBounds = null; 
 
@@ -90,19 +90,20 @@ async function doSearch(q) {
       });
     }
     box.classList.add('show');
-  } catch (e) { console.warn('Search service error', e); }
+  } catch (e) { console.warn('Search routing error:', e); }
 }
 
 /**
- * INTERCEPTOR: Hooks into your form submit action. Maps a new node point marker
- * locally and asynchronously passes payload records over to Google Forms.
+ * Intercepts active submissions to immediately plot pins on-screen, bypassing database sync delays
  */
 function initFormSubmissionInterceptor() {
   const formElement = document.querySelector('#drawer form');
-  if (!formElement) return;
+  if (!formElement) {
+    console.warn("⚠️ Data collection submission form not found inside DOM layouts.");
+    return;
+  }
 
   formElement.addEventListener('submit', function(event) {
-    // Collect coordinates from the read-only form input fields
     const coordString = document.getElementById('f-coords')?.value || "";
     if (!coordString.includes(',')) return;
     
@@ -110,7 +111,6 @@ function initFormSubmissionInterceptor() {
     const latNum = parseFloat(splitPair[0]);
     const lngNum = parseFloat(splitPair[1]);
 
-    // Build immediate visual map report object
     const simulatedReport = {
       name:        document.getElementById('f-name')?.value || 'Unnamed area',
       gnDivision:  document.getElementById('f-gn')?.value || 'Unknown GN',
@@ -122,7 +122,6 @@ function initFormSubmissionInterceptor() {
       timestamp:   new Date().toLocaleString()
     };
 
-    // Plot node directly onto map canvas without making user wait
     if (typeof saveReport === 'function') {
       saveReport(simulatedReport);
     }
@@ -130,28 +129,29 @@ function initFormSubmissionInterceptor() {
     showToast('✅ Report successfully registered and dispatched');
     document.getElementById('drawer').classList.remove('open');
     
-    // Allow standard iframe routing target pipelines to complete standard logs 
+    // Smooth input element flush handling
     setTimeout(() => { formElement.reset(); }, 200);
   });
 }
 
-// Synchronous System Bootstrap On Page Initialization //
+// Map Application Setup Bootstrapper Pipeline
 window.addEventListener('load', async () => {
-  setStatus('Loading province boundary…', 'loading');
+  setStatus('Loading province boundary vectors…', 'loading');
 
   try {
     await loadBoundary();
     
-    setStatus('Loading wetland polygons…', 'loading');
+    setStatus('Loading environmental spatial assets…', 'loading');
     const count = await loadWetlands();
 
-    setStatus('Synchronizing live community database…', 'loading');
+    setStatus('Synchronizing live community cloud records…', 'loading');
     await restoreReportMarkers();
 
-    // Activate interception hook layout engines
+    // Hook core browser interaction controllers
     initFormSubmissionInterceptor();
 
-    document.getElementById('loader').style.display = 'none';
+    const loaderEl = document.getElementById('loader');
+    if (loaderEl) loaderEl.style.display = 'none';
 
     if (typeof boundaryLayer !== 'undefined' && boundaryLayer) {
       initSearch(boundaryLayer.getBounds());
@@ -160,8 +160,9 @@ window.addEventListener('load', async () => {
     setStatus(`${count} wetlands mapped — Click locations inside Western Province to file a live report.`);
   } catch (err) {
     console.error("Initialization sequence break:", err);
-    document.getElementById('loader').style.display = 'none';
-    setStatus('Error initializing active map parameters', 'warn');
-    showToast('Failed to connect to backend data networks', true);
+    const loaderEl = document.getElementById('loader');
+    if (loaderEl) loaderEl.style.display = 'none';
+    setStatus('Error initiating map parameters', 'warn');
+    showToast('Failed to reach system data arrays', true);
   }
 });
