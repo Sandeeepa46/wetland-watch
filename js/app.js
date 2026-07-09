@@ -1,9 +1,9 @@
-/* app.js — Core Bootstrap UI & Initialization Pipeline
+/* app.js — Core Bootstrap UI & Form Interception Pipeline
 */
 
-// Toast Notifications //
 function showToast(msg, isError = false) {
   const t = document.getElementById('toast');
+  if(!t) return;
   t.textContent = msg;
   t.className = 'toast' + (isError ? ' error' : '');
   t.classList.add('show');
@@ -11,20 +11,18 @@ function showToast(msg, isError = false) {
   t._timer = setTimeout(() => t.classList.remove('show'), isError ? 4500 : 3800);
 }
 
-// Status Bar Monitor //
 function setStatus(msg, mode = 'ok') {
-  document.getElementById('statusText').textContent = msg;
-  const dot = document.getElementById('statusDot');
-  dot.className = 'pulsedot' + (mode === 'warn' ? ' warn' : mode === 'loading' ? ' loading' : '');
+  const sText = document.getElementById('statusText');
+  const sDot = document.getElementById('statusDot');
+  if(sText) sText.textContent = msg;
+  if(sDot) sDot.className = 'pulsedot' + (mode === 'warn' ? ' warn' : mode === 'loading' ? ' loading' : '');
 }
 
-// Navigation Sidebar Toggle Drawer //
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('hidden');
   setTimeout(() => map.invalidateSize(), 300);
 }
 
-// Geolocation GPS Hardware Tracker //
 let locMarker = null;
 function locateMe() {
   if (!navigator.geolocation) { showToast('Geolocation not supported by your browser', true); return; }
@@ -44,28 +42,32 @@ function locateMe() {
   );
 }
 
-// Nominatim Geocoding Search Box System //
+// Nominatim Geocoding System //
 let searchTimer = null;
 let provinceBounds = null; 
 
 function initSearch(bounds) {
   provinceBounds = bounds;
   const input = document.getElementById('searchInput');
+  if(!input) return;
   input.addEventListener('input', function () {
     const q = this.value.trim();
     const box = document.getElementById('searchResults');
     if (searchTimer) clearTimeout(searchTimer);
-    if (q.length < 3) { box.classList.remove('show'); return; }
+    if (q.length < 3) { if(box) box.classList.remove('show'); return; }
     searchTimer = setTimeout(() => doSearch(q), 400);
   });
   document.addEventListener('click', e => {
-    if (!e.target.closest('.search-wrap'))
-      document.getElementById('searchResults').classList.remove('show');
+    if (!e.target.closest('.search-wrap')) {
+      const box = document.getElementById('searchResults');
+      if(box) box.classList.remove('show');
+    }
   });
 }
 
 async function doSearch(q) {
   const box = document.getElementById('searchResults');
+  if(!box) return;
   try {
     const B = provinceBounds;
     const vb = `${B.getWest()},${B.getNorth()},${B.getEast()},${B.getSouth()}`;
@@ -91,26 +93,66 @@ async function doSearch(q) {
   } catch (e) { console.warn('Search service error', e); }
 }
 
-// Synchronous System Bootstrap On Window Load //
+/**
+ * INTERCEPTOR: Hooks into your form submit action. Maps a new node point marker
+ * locally and asynchronously passes payload records over to Google Forms.
+ */
+function initFormSubmissionInterceptor() {
+  const formElement = document.querySelector('#drawer form');
+  if (!formElement) return;
+
+  formElement.addEventListener('submit', function(event) {
+    // Collect coordinates from the read-only form input fields
+    const coordString = document.getElementById('f-coords')?.value || "";
+    if (!coordString.includes(',')) return;
+    
+    const splitPair = coordString.split(',');
+    const latNum = parseFloat(splitPair[0]);
+    const lngNum = parseFloat(splitPair[1]);
+
+    // Build immediate visual map report object
+    const simulatedReport = {
+      name:        document.getElementById('f-name')?.value || 'Unnamed area',
+      gnDivision:  document.getElementById('f-gn')?.value || 'Unknown GN',
+      type:        document.getElementById('f-type')?.value || 'Other',
+      description: document.getElementById('f-desc')?.value || '',
+      date:        document.getElementById('f-date')?.value || new Date().toISOString().slice(0,10),
+      lat:         latNum,
+      lng:         lngNum,
+      timestamp:   new Date().toLocaleString()
+    };
+
+    // Plot node directly onto map canvas without making user wait
+    if (typeof saveReport === 'function') {
+      saveReport(simulatedReport);
+    }
+
+    showToast('✅ Report successfully registered and dispatched');
+    document.getElementById('drawer').classList.remove('open');
+    
+    // Allow standard iframe routing target pipelines to complete standard logs 
+    setTimeout(() => { formElement.reset(); }, 200);
+  });
+}
+
+// Synchronous System Bootstrap On Page Initialization //
 window.addEventListener('load', async () => {
   setStatus('Loading province boundary…', 'loading');
 
   try {
-    // 1. Ingest base provincial operational map limits
     await loadBoundary();
     
-    // 2. Load classified wetland asset polygons
     setStatus('Loading wetland polygons…', 'loading');
     const count = await loadWetlands();
 
-    // 3. Sync live database spreadsheet rows
     setStatus('Synchronizing live community database…', 'loading');
     await restoreReportMarkers();
 
-    // Remove application loading curtains from UI view
+    // Activate interception hook layout engines
+    initFormSubmissionInterceptor();
+
     document.getElementById('loader').style.display = 'none';
 
-    // Activate Nominatim text searching bounding parameters
     if (typeof boundaryLayer !== 'undefined' && boundaryLayer) {
       initSearch(boundaryLayer.getBounds());
     }
@@ -119,7 +161,7 @@ window.addEventListener('load', async () => {
   } catch (err) {
     console.error("Initialization sequence break:", err);
     document.getElementById('loader').style.display = 'none';
-    setStatus('Error initializing active map parameters — see console logs', 'warn');
+    setStatus('Error initializing active map parameters', 'warn');
     showToast('Failed to connect to backend data networks', true);
   }
 });
