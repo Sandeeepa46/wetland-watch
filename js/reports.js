@@ -1,142 +1,43 @@
-/* reports.js — Robust Dynamic Header Mapping System
-*/
+/* 
+   reports.js — localStorage persistence, reports panel,
+                CSV export, stat refresh
+ */
 
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMWIbtU1mZTUQI6OBVIPl_eAplNdDGbCCEUl1vYzV_6Ef-Ne325oh9e0CE20wKGWxHbEeA6uv7_NUa/pub?gid=773411622&single=true&output=csv";
+const STORAGE_KEY = 'wetlandwatch_reports_v1';
 
-let liveReportsDatabase = [];
-let activeFilter = 'all';
+//  CRUD //
+function saveReport(report) {
+  const all = getAllReports();
+  // Avoid exact duplicates (same id) before pushing
+  const exists = all.some(r => r.id === report.id);
+  if (!exists) all.push(report);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+}
 
 function getAllReports() {
-  return liveReportsDatabase;
-}
-
-async function restoreReportMarkers() {
-  if (!GOOGLE_SHEET_CSV_URL) return;
-
-  if (typeof reportMarkersLayer === 'undefined' || !reportMarkersLayer) {
-    setTimeout(restoreReportMarkers, 300);
-    return;
-  }
-
   try {
-    const response = await fetch(GOOGLE_SHEET_CSV_URL);
-    const csvData = await response.text();
-    
-    if (!csvData || csvData.trim().length === 0) return;
-
-    reportMarkersLayer.clearLayers();
-    liveReportsDatabase = [];
-
-    const lines = csvData.split(/\r?\n/);
-    if (lines.length <= 1) return; 
-
-    // Extract headers to map them dynamically
-    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
-    
-    // Find column positions automatically by searching your form's exact keywords
-    const idxTimestamp   = headers.findIndex(h => h.includes('time'));
-    const idxName        = headers.findIndex(h => h.includes('name') || h.includes('title') || h.includes('wetland'));
-    const idxGn          = headers.findIndex(h => h.includes('gn') || h.includes('division') || h.includes('grama'));
-    const idxCoords      = headers.findIndex(h => h.includes('coord') || h.includes('lat') || h.includes('location'));
-    const idxType        = headers.findIndex(h => h.includes('type') || h.includes('encroach'));
-    const idxDescription = headers.findIndex(h => h.includes('desc') || h.includes('detail'));
-    const idxDate        = headers.findIndex(h => h.includes('date'));
-
-    const rows = lines.slice(1);
-
-    rows.forEach((row, index) => {
-      if (!row.trim()) return;
-
-      // Safe split ignoring commas wrapped inside quotes
-      const columns = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-
-      // Clean cell values
-      const getCell = (idx) => (idx !== -1 && columns[idx]) ? columns[idx].replace(/"/g, '').trim() : '';
-
-      const report = {
-        id:          "sheet-" + (index + 1),
-        timestamp:   getCell(idxTimestamp),
-        name:        getCell(idxName) || 'Unnamed Wetland Asset',
-        gnDivision:  getCell(idxGn) || 'Unknown GN',
-        coordsRaw:   getCell(idxCoords),
-        type:        getCell(idxType) || 'Other',
-        description: getCell(idxDescription),
-        date:        getCell(idxDate)
-      };
-
-      // Safe coordinate extractor
-      if (report.coordsRaw && report.coordsRaw.includes(',')) {
-        const splitPair = report.coordsRaw.split(',');
-        report.lat = parseFloat(splitPair[0]);
-        report.lng = parseFloat(splitPair[1]);
-      }
-
-      if (report.lat && report.lng && !isNaN(report.lat) && !isNaN(report.lng)) {
-        const checkPoint = L.latLng(report.lat, report.lng);
-        let pointIntersectsWetland = false;
-
-        if (typeof wetlandLayer !== 'undefined' && wetlandLayer) {
-          wetlandLayer.eachLayer(layer => {
-            if (layer.getBounds && layer.getBounds().contains(checkPoint)) {
-              pointIntersectsWetland = true;
-            }
-          });
-        }
-        report.onWetland = pointIntersectsWetland;
-
-        liveReportsDatabase.push(report);
-        
-        if (typeof addReportMarker === 'function') {
-          addReportMarker(report);
-        }
-      }
-    });
-
-    refreshReportStats();
-    if (document.getElementById('reportsPanel').classList.contains('open')) {
-      renderReportCards();
-    }
-
-  } catch (error) {
-    console.error("Database initialization stopped:", error);
-  }
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  } catch { return []; }
 }
 
-function saveReport(newReport) {
-  newReport.id = "local-" + Date.now();
-  
-  const checkPoint = L.latLng(newReport.lat, newReport.lng);
-  let pointIntersectsWetland = false;
-
-  if (typeof wetlandLayer !== 'undefined' && wetlandLayer) {
-    wetlandLayer.eachLayer(layer => {
-      if (layer.getBounds && layer.getBounds().contains(checkPoint)) {
-        pointIntersectsWetland = true;
-      }
-    });
-  }
-  newReport.onWetland = pointIntersectsWetland;
-
-  liveReportsDatabase.push(newReport);
-  
-  if (typeof addReportMarker === 'function') {
-    addReportMarker(newReport);
-  }
-  
-  refreshReportStats();
-  if (document.getElementById('reportsPanel').classList.contains('open')) {
-    renderReportCards();
-  }
+function clearAllReports() {
+  localStorage.removeItem(STORAGE_KEY);
 }
+
+//  Reports panel //
+let activeFilter = 'all';
 
 function openReportsPanel() {
-  document.getElementById('reportsPanel').classList.add('open');
-  document.getElementById('drawer').classList.remove('open');
+  const panel = document.getElementById('reportsPanel');
+  const drawer = document.getElementById('drawer');
+  if (panel)  panel.classList.add('open');
+  if (drawer) drawer.classList.remove('open');
   renderReportCards();
 }
 
 function closeReportsPanel() {
-  document.getElementById('reportsPanel').classList.remove('open');
+  const panel = document.getElementById('reportsPanel');
+  if (panel) panel.classList.remove('open');
 }
 
 function setFilter(type) {
@@ -150,86 +51,141 @@ function setFilter(type) {
 function renderReportCards() {
   const body = document.getElementById('rp-body');
   if (!body) return;
-  
-  let reports = [...liveReportsDatabase];
 
-  if (activeFilter !== 'all') {
+  let reports = getAllReports();
+  if (activeFilter !== 'all')
     reports = reports.filter(r => r.type === activeFilter);
-  }
 
-  reports = reports.sort((a, b) => b.id.localeCompare(a.id));
+  reports = reports.sort((a, b) => {
+    // Newest first — prefer timestamp field; fall back to id
+    const ta = new Date(a.timestamp || 0).getTime() || a.id || 0;
+    const tb = new Date(b.timestamp || 0).getTime() || b.id || 0;
+    return tb - ta;
+  });
 
   if (reports.length === 0) {
     body.className = 'rp-body empty';
-    body.innerHTML = '<div class="empty-icon">📭</div><div>No matching reports found.</div>';
+    body.innerHTML =
+      '<div class="empty-icon">&#128235;</div>' +
+      '<div>No reports yet</div>' +
+      '<div style="font-size:12px;color:var(--dim2)">Click anywhere in Western Province to start.</div>';
     return;
   }
 
   body.className = 'rp-body';
   body.innerHTML = reports.map(r => {
-    const color = (typeof ENCROACH_COLORS !== 'undefined' ? ENCROACH_COLORS[r.type] : null) || '#94a3b8';
-    const dateStr = r.date || r.timestamp?.slice(0, 10) || '—';
+    const color = (ENCROACH_COLORS && ENCROACH_COLORS[r.type]) || '#94a3b8';
+    const dateStr = r.date || (r.timestamp ? r.timestamp.slice(0, 10) : '—');
     const onWetlandBadge = r.onWetland
-      ? `<span style="font-size:10px;color:#4ade80;margin-left:4px">🌿 on wetland</span>`
-      : `<span style="font-size:10px;color:#fbbf24;margin-left:4px">📍 outside polygon</span>`;
+      ? `<span style="font-size:10px;color:#4ade80;margin-left:4px">&#127807; on wetland</span>`
+      : `<span style="font-size:10px;color:#fbbf24;margin-left:4px">&#128205; outside polygon</span>`;
+    const sourceTag = r.source === 'sheet'
+      ? `<span style="font-size:10px;color:#60a5fa;margin-left:4px">&#9729; live</span>`
+      : '';
 
     return `<div class="report-card" onclick="focusReport('${r.id}')">
       <div class="rc-header">
         <div class="rc-dot" style="background:${color}"></div>
         <div style="flex:1">
-          <div class="rc-title">${r.name || 'Unnamed area'} ${onWetlandBadge}</div>
-          <div class="rc-meta">${r.gnDivision || 'Unknown GN'}</div>
+          <div class="rc-title">${escHtml(r.name || 'Unnamed area')} ${onWetlandBadge} ${sourceTag}</div>
+          <div class="rc-meta">${escHtml(r.gnDivision || 'Unknown GN')}</div>
         </div>
-        <span class="rc-type-badge">${r.type}</span>
+        <span class="rc-type-badge">${escHtml(r.type || '—')}</span>
       </div>
-      ${r.description ? `<div class="rc-desc">${r.description}</div>` : ''}
+      ${r.description
+        ? `<div class="rc-desc">${escHtml(r.description.slice(0, 100))}${r.description.length > 100 ? '…' : ''}</div>`
+        : ''}
       <div class="rc-footer">
-        <span class="rc-date">📅 ${dateStr}</span>
+        <span class="rc-date">&#128197; ${escHtml(dateStr)}</span>
+        ${r.lat
+          ? `<span class="rc-locate" onclick="event.stopPropagation();flyToReport(${r.lat},${r.lng})">&#128205; Show on map</span>`
+          : ''}
       </div>
     </div>`;
   }).join('');
 }
 
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function focusReport(id) {
-  const report = liveReportsDatabase.find(r => r.id == id);
+  const report = getAllReports().find(r => String(r.id) === String(id));
   if (!report || !report.lat) return;
-  map.flyTo([report.lat, report.lng], 16, { duration: 1.2 });
+  flyToReport(report.lat, report.lng);
+}
+
+function flyToReport(lat, lng) {
+  map.flyTo([lat, lng], 16, { duration: 1.2 });
   closeReportsPanel();
 }
 
+// ── Refresh all counters / badges ─────────────────
 function refreshReportStats() {
-  const all = liveReportsDatabase;
-  
-  const totalEl = document.getElementById('rp-total');
-  const wetlandEl = document.getElementById('rp-wetland');
-  const otherEl = document.getElementById('rp-other');
-  
-  if (totalEl) totalEl.textContent = all.length;
-  if (wetlandEl) wetlandEl.textContent = all.filter(r => r.onWetland).length;
-  if (otherEl) otherEl.textContent = all.filter(r => !r.onWetland).length;
-  
-  const badge = document.getElementById('reports-count-badge');
-  if (badge) badge.textContent = all.length;
-  
-  const sbBadge = document.getElementById('reports-count-badge-sb');
-  if (sbBadge) sbBadge.textContent = all.length;
+  const all     = getAllReports();
+  const total   = all.length;
+  const wetland = all.filter(r => r.onWetland).length;
+  const other   = all.filter(r => !r.onWetland).length;
 
-  const layerCount = document.getElementById('reports-count-layer');
-  if (layerCount) layerCount.textContent = all.length;
+  // Reports panel footer
+  _setText('rp-total',   total);
+  _setText('rp-wetland', wetland);
+  _setText('rp-other',   other);
+
+  // Sidebar stat pill
+  _setText('reports-count-badge-sb', total);
+
+  // Top-bar badge (red circle)
+  _setText('reports-count-badge', total);
+
+  // Layer toggle count
+  _setText('reports-count-layer', total);
+
+  // Re-render if panel is open
+  const panel = document.getElementById('reportsPanel');
+  if (panel && panel.classList.contains('open')) renderReportCards();
 }
 
+function _setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+// ── Export CSV ────────────────────────────────────
 function exportCSV() {
-  const reports = liveReportsDatabase;
-  if (!reports.length) return;
-  const headers = ['ID', 'Name', 'GN Division', 'Encroachment Type', 'Description', 'Date', 'Latitude', 'Longitude', 'On Wetland'];
+  const reports = getAllReports();
+  if (!reports.length) { showToast('No reports to export yet', true); return; }
+
+  const headers = [
+    'ID','Name','GN Division','Encroachment Type',
+    'Description','Date','Latitude','Longitude','On Wetland','Submitted At','Source'
+  ];
   const rows = reports.map(r => [
-    r.id, r.name || '', r.gnDivision || '', r.type || '',
-    (r.description || '').replace(/,/g, ';'),
-    r.date || '', r.lat || '', r.lng || '', r.onWetland ? 'Yes' : 'No'
+    r.id,
+    csvField(r.name),
+    csvField(r.gnDivision),
+    csvField(r.type),
+    csvField(r.description),
+    csvField(r.date),
+    r.lat  || '',
+    r.lng  || '',
+    r.onWetland ? 'Yes' : 'No',
+    csvField(r.timestamp),
+    csvField(r.source)
   ]);
-  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+
+  const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+  const a   = document.createElement('a');
+  a.href     = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = 'wetlandwatch_reports.csv';
   a.click();
+  showToast('&#128229; Reports exported as CSV');
+}
+
+function csvField(v) {
+  if (v == null) return '';
+  const s = String(v).replace(/"/g, '""');
+  return /[,"\n]/.test(s) ? `"${s}"` : s;
 }
